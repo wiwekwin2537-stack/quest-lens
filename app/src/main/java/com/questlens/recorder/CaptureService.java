@@ -43,6 +43,7 @@ public final class CaptureService extends Service {
     private File staging;
     private String stem;
     private boolean recording, finishing, destroying;
+    private boolean captureVisible = true;
     private long startedAt;
     private int width, height;
 
@@ -50,6 +51,12 @@ public final class CaptureService extends Service {
     private final MediaProjection.Callback callbacks = new MediaProjection.Callback() {
         @Override public void onStop() {
             finish("android_stopped");
+        }
+
+        @Override public void onCapturedContentVisibilityChanged(boolean visible) {
+            if (!recording || captureVisible == visible) return;
+            captureVisible = visible;
+            OverlayService.refresh();
         }
 
         @Override public void onCapturedContentResize(int contentWidth, int contentHeight) {
@@ -74,12 +81,20 @@ public final class CaptureService extends Service {
         return current != null && current.recording;
     }
 
+    static boolean contentHidden() {
+        return running() && !current.captureVisible;
+    }
+
     static void stopCurrent() {
         if (running()) current.finish("user_stopped");
     }
 
     static void markCurrent() {
         if (!running()) return;
+        if (contentHidden()) {
+            Toast.makeText(current, "เปิดแอปที่เลือกบันทึกก่อนทำเครื่องหมาย", Toast.LENGTH_SHORT).show();
+            return;
+        }
         JSONObject marker = new JSONObject();
         try {
             long time = current.elapsed();
@@ -94,6 +109,7 @@ public final class CaptureService extends Service {
 
     static String status(boolean saved) {
         if (running()) {
+            if (contentHidden()) return "⚠ มองไม่เห็นแอปที่เลือกบันทึก";
             long remaining = Math.max(0, LIMIT_MS - current.elapsed() + 999) / 1000;
             return "● กำลังบันทึก · เหลือ " + remaining + " วินาที";
         }
@@ -210,7 +226,11 @@ public final class CaptureService extends Service {
                     }
                     videoDuration = Long.parseLong(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
                 }
-                if (videoDuration <= 0) throw new IOException("Empty video track");
+                if (!CaptureTiming.isComplete(duration, videoDuration)) {
+                    staging.delete();
+                    main.post(() -> complete("ภาพขาดช่วง · ไม่มีคลิปใหม่ ลองเลือกแอปเกมหรือโหมดทั้งหน้าจอ"));
+                    return;
+                }
 
                 JSONObject session = new JSONObject()
                         .put("schema_version", 1)

@@ -132,10 +132,12 @@ public final class OverlayService extends Service {
 
     private void updateBubble() {
         boolean recording = CaptureService.running();
-        bubble.setText(recording ? "●" : "QL");
+        boolean hidden = CaptureService.contentHidden();
+        bubble.setText(hidden ? "!" : recording ? "●" : "QL");
         bubble.setTextColor(Ui.BG);
-        bubble.setBackground(Ui.shape(this, recording ? Ui.REC : Ui.ACCENT, 28));
-        bubble.setContentDescription(recording ? "กำลังบันทึก เปิดแผง Quest Lens" : "เปิดแผง Quest Lens");
+        bubble.setBackground(Ui.shape(this, hidden ? 0xffffd379 : recording ? Ui.REC : Ui.ACCENT, 28));
+        bubble.setContentDescription(hidden ? "มองไม่เห็นแอปที่เลือกบันทึก"
+                : recording ? "กำลังบันทึก เปิดแผง Quest Lens" : "เปิดแผง Quest Lens");
         hidePanel();
     }
 
@@ -144,7 +146,8 @@ public final class OverlayService extends Service {
         panel.setBackground(Ui.shape(this, Ui.PANEL, 16));
         panel.addView(Ui.text(this, "Quest Lens", 18, Ui.ACCENT, true));
         if (CaptureService.running()) {
-            panel.addView(Ui.text(this, "กำลังบันทึก", 14, Ui.REC, false));
+            panel.addView(Ui.text(this, CaptureService.contentHidden()
+                    ? "มองไม่เห็นแอปที่เลือกบันทึก" : "กำลังบันทึก", 14, Ui.REC, false));
             Ui.button(panel, "ทำเครื่องหมายหน้าเควส", true, () -> {
                 CaptureService.markCurrent();
                 hidePanel();

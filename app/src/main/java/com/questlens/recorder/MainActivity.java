@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.media.projection.MediaProjectionConfig;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Bundle;
@@ -25,7 +26,7 @@ public final class MainActivity extends Activity {
     private static final int SAVE_REQUEST = 43;
     private TextView status;
     private Button overlayButton, start, share, save, preview, delete;
-    private CheckBox landscape;
+    private CheckBox landscape, fullDisplay;
     private boolean asking;
 
     @Override public void onCreate(Bundle saved) {
@@ -43,7 +44,7 @@ public final class MainActivity extends Activity {
             return insets;
         });
         setContentView(scroll);
-        root.addView(Ui.text(this, "QUEST LENS  /  01", 13, Ui.ACCENT, true));
+        root.addView(Ui.text(this, "QUEST LENS  /  0.2", 13, Ui.ACCENT, true));
         root.addView(Ui.text(this, "บันทึกการเล่นเควส", 30, Ui.TEXT, true));
         root.addView(Ui.text(this, "เก็บวิดีโอและจุดสำคัญไว้ในเครื่อง แล้วเลือกไฟล์ที่ต้องการส่งเอง", 16, Ui.MUTED, false));
 
@@ -58,6 +59,11 @@ public final class MainActivity extends Activity {
         landscape.setOnCheckedChangeListener((view, checked) ->
                 getPreferences(MODE_PRIVATE).edit().putBoolean("landscape", checked).apply());
         root.addView(landscape);
+        fullDisplay = new CheckBox(this);
+        fullDisplay.setText("บันทึกทั้งหน้าจอ (เมื่อเลือกแอปเกมแล้วภาพไม่ติด)");
+        fullDisplay.setTextColor(Ui.TEXT);
+        fullDisplay.setChecked(saved != null && saved.getBoolean("fullDisplay"));
+        root.addView(fullDisplay);
         start = Ui.button(root, "", true, () -> {
             if (CaptureService.running()) CaptureService.stopCurrent();
             else requestCapture();
@@ -73,7 +79,7 @@ public final class MainActivity extends Activity {
                             refresh();
                         }).show());
         root.addView(Ui.text(this,
-                "\nเลือกแชร์เฉพาะแอปเกมเพื่อเก็บเฉพาะเกม ถ้าต้องการเห็นจุดแตะ ให้ลองเปิด Show taps แล้วทดสอบคลิปสั้นก่อน จุดแตะอาจเห็นได้เฉพาะโหมดทั้งหน้าจอในบางเครื่อง",
+                "\nเลือกแชร์เฉพาะแอปเกมเพื่อเก็บเฉพาะเกม หากใช้ทั้งหน้าจอ ให้กลับเข้าเกมทันทีหลังอนุญาตและหยุดก่อนเปิดแอปอื่น เพราะคลิปอาจติดหน้าจออื่นหรือการแจ้งเตือน",
                 14, Ui.MUTED, false));
         root.addView(Ui.text(this, "แตะปุ่มลอยเพื่อเปิดแผง กด “ทำเครื่องหมาย” ขณะเห็นหน้าที่ต้องการตรวจ บันทึกได้รอบละ 90 วินาที", 14, Ui.MUTED, false));
     }
@@ -98,6 +104,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onSaveInstanceState(Bundle out) {
         out.putBoolean("asking", asking);
+        out.putBoolean("fullDisplay", fullDisplay.isChecked());
         super.onSaveInstanceState(out);
     }
 
@@ -147,8 +154,11 @@ public final class MainActivity extends Activity {
     private void requestCapture() {
         if (asking || CaptureService.busy() || !notificationsAllowed()) return;
         asking = true;
+        MediaProjectionConfig config = fullDisplay.isChecked()
+                ? MediaProjectionConfig.createConfigForDefaultDisplay()
+                : MediaProjectionConfig.createConfigForUserChoice();
         startActivityForResult(getSystemService(MediaProjectionManager.class)
-                .createScreenCaptureIntent(), CAPTURE_REQUEST);
+                .createScreenCaptureIntent(config), CAPTURE_REQUEST);
     }
 
     @Override public void onActivityResult(int request, int result, Intent data) {
@@ -163,7 +173,9 @@ public final class MainActivity extends Activity {
             startForegroundService(new Intent(this, CaptureService.class)
                     .putExtra(CaptureService.CONSENT, data)
                     .putExtra(CaptureService.LANDSCAPE, landscape.isChecked()));
-            moveTaskToBack(true);
+            if (hasWindowFocus()) {
+                Toast.makeText(this, "กลับเข้าเกม แล้วรอให้ปุ่มลอยแสดงจุดบันทึก", Toast.LENGTH_LONG).show();
+            }
         }
     }
 
@@ -175,6 +187,7 @@ public final class MainActivity extends Activity {
         start.setText(CaptureService.running() ? "หยุดบันทึก" : "เลือกหน้าจอและเริ่มบันทึก");
         start.setEnabled(!busy || CaptureService.running());
         landscape.setEnabled(!busy);
+        fullDisplay.setEnabled(!busy);
         preview.setEnabled(!busy && archive != null);
         share.setEnabled(!busy && archive != null);
         save.setEnabled(!busy && archive != null);

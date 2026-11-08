@@ -150,10 +150,17 @@ def review(args):
             raise ValueError("Invalid video dimensions or frame rate")
 
         bookmarks = session.get("bookmarks", [])
-        last_ms = round((count - 1) * 1000 / fps)
+        duration_ms = session.get("video_duration_ms", round(count * 1000 / fps))
+        missing_bookmarks = []
         for index, bookmark in enumerate(bookmarks, 1):
-            milliseconds = min(last_ms, int(bookmark["suggested_review_ms"]))
-            write_frame(video, args.output / f"quest-page-{index:02d}.png", milliseconds)
+            milliseconds = int(bookmark["suggested_review_ms"])
+            if not 0 <= milliseconds < duration_ms:
+                missing_bookmarks.append({"index": index, "at_ms": milliseconds, "reason": "outside_video"})
+                continue
+            try:
+                write_frame(video, args.output / f"quest-page-{index:02d}.png", milliseconds)
+            except ValueError:
+                missing_bookmarks.append({"index": index, "at_ms": milliseconds, "reason": "frame_unavailable"})
         for index, seconds in enumerate(args.frame, 1):
             write_frame(video, args.output / f"frame-{index:02d}.png", round(seconds * 1000))
 
@@ -162,6 +169,7 @@ def review(args):
             candidates = find_candidates(video, args.sample, args.radius, args.threshold, fps, width, height)
         report = {
             "session": session,
+            "missing_bookmarks": missing_bookmarks,
             "touch_analysis": "visual_candidates_only" if candidates is not None else "not_run_without_calibration",
             "touch_candidates": candidates,
             "video_coordinates": {"width": width, "height": height},
